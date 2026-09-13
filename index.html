@@ -18,8 +18,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
-  <!-- App Styles -->
-  <link rel="stylesheet" href="styles.css">
+  <!-- App Styles (Version query for instant cache invalidation) -->
+  <link rel="stylesheet" href="styles.css?v=3.0">
 </head>
 <body>
 
@@ -220,7 +220,7 @@
 
       <div style="display: flex; flex-direction: column; gap: 8px;">
         <label style="font-size: 0.85rem; font-weight: 600;">Your Name / Device Name:</label>
-        <input type="text" class="input-text" id="userNameInput" placeholder="e.g. Amir's Laptop" style="font-size: 1rem; padding: 10px 14px;">
+        <input type="text" class="input-text" id="userNameInput" placeholder="e.g. Amir's Phone" style="font-size: 1rem; padding: 10px 14px;">
       </div>
 
       <button class="btn-primary" id="saveUserNameBtn" type="button">
@@ -332,8 +332,8 @@
   <!-- Toast Container -->
   <div class="toast-container" id="toastContainer"></div>
 
-  <!-- App Script -->
-  <script src="app.js"></script>
+  <!-- App Script (Version query for instant cache invalidation) -->
+  <script src="app.js?v=3.0"></script>
   <script>
     // Initialize Lucide Icons
     lucide.createIcons();

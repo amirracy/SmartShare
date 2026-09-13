@@ -2,7 +2,7 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>SmartShare Hub - Instant Cross-Device Sharing</title>
   <meta name="description" content="Free, instant zero-cable data sharing tool between Laptop and Phone for text, photos, and files using WebRTC and temporary DB.">
   
@@ -17,10 +17,6 @@
   <!-- QR Code & WebRTC Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-  
-  <!-- Firebase Realtime Database Compat SDKs -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
   <!-- App Styles -->
   <link rel="stylesheet" href="styles.css">
@@ -48,6 +44,11 @@
           <i data-lucide="qr-code" style="width: 16px; height: 16px;"></i>
         </div>
 
+        <!-- Quick Join PIN Button -->
+        <button class="btn-icon" id="quickJoinBtn" title="Join another Room PIN" style="color: var(--primary);">
+          <i data-lucide="hash"></i>
+        </button>
+
         <!-- Auto Expiry / Storage Info -->
         <button class="btn-icon" id="openSettingsBtn" title="Auto Cleanup & Storage Settings">
           <i data-lucide="clock"></i>
@@ -71,7 +72,7 @@
           <i data-lucide="send" style="color: var(--primary);"></i>
           Share Item
         </h2>
-        <span class="item-count-pill" id="targetPeerCount">Cloud DB Synced</span>
+        <span class="item-count-pill" id="targetPeerCount">Cloud Synced</span>
       </div>
 
       <!-- Composer Tabs -->
@@ -221,17 +222,17 @@
 
       <!-- Room PIN Info -->
       <div style="text-align: center;">
-        <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Room PIN Code</div>
+        <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Current Room PIN</div>
         <div style="font-size: 1.8rem; font-weight: 800; color: var(--primary); font-family: monospace;" id="modalRoomPin">----</div>
       </div>
 
       <!-- Join another Room manually -->
       <div style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border-color); padding-top: 14px;">
-        <label style="font-size: 0.82rem; font-weight: 600;">Join a Specific Room PIN:</label>
+        <label style="font-size: 0.85rem; font-weight: 600;">Join a Specific Room PIN:</label>
         <div class="room-input-group">
-          <input type="text" class="input-text" id="joinRoomPinInput" placeholder="Enter 4-digit code (e.g. 1089)">
+          <input type="text" class="input-text" id="joinRoomPinInput" placeholder="Enter 4-digit PIN (e.g. 3270)">
           <button class="btn-primary" id="joinRoomSubmitBtn" style="width: auto; padding: 0 16px;">
-            Join
+            Join PIN
           </button>
         </div>
       </div>
@@ -242,7 +243,7 @@
   <div class="modal-overlay" id="settingsModal">
     <div class="modal-card">
       <div class="modal-header">
-        <h3>Temporary DB & Sync Status</h3>
+        <h3>Temporary DB & Storage</h3>
         <button class="btn-icon" id="closeSettingsModalBtn">
           <i data-lucide="x"></i>
         </button>
@@ -256,7 +257,7 @@
 
         <div style="display: flex; align-items: center; justify-content: space-between;">
           <span>Cloud Temporary DB:</span>
-          <span style="color: var(--accent); font-weight: 600;" id="cloudDbStatus">Active Realtime DB</span>
+          <span style="color: var(--accent); font-weight: 600;" id="cloudDbStatus">Active Realtime Sync</span>
         </div>
 
         <div style="display: flex; align-items: center; justify-content: space-between;">

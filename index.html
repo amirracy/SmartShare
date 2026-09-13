@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmartShare Hub - Instant Cross-Device Sharing</title>
+  <meta name="description" content="Free, instant zero-cable data sharing tool between Laptop and Phone for text, photos, and files using WebRTC and temporary DB.">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- QR Code & WebRTC Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  
+  <!-- Firebase Realtime Database Compat SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <!-- App Styles -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- App Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <a href="#" class="logo-brand">
+        <div class="logo-icon">
+          <i data-lucide="zap"></i>
+        </div>
+        <div class="logo-text">
+          <h1>SmartShare</h1>
+          <span>Cross-Device Vault</span>
+        </div>
+      </a>
+
+      <div class="header-actions">
+        <!-- Room Status Badge & Pair Button -->
+        <div class="room-badge" id="openRoomBtn" title="Click to view Room QR Code & PIN">
+          <span class="status-dot"></span>
+          <span class="room-code-display" id="roomCodeDisplay">ROOM #----</span>
+          <i data-lucide="qr-code" style="width: 16px; height: 16px;"></i>
+        </div>
+
+        <!-- Auto Expiry / Storage Info -->
+        <button class="btn-icon" id="openSettingsBtn" title="Auto Cleanup & Storage Settings">
+          <i data-lucide="clock"></i>
+        </button>
+
+        <!-- Theme Toggle -->
+        <button class="btn-icon" id="themeToggleBtn" title="Toggle Light/Dark Theme">
+          <i data-lucide="sun" id="themeIcon"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-wrapper">
+    
+    <!-- Left Composer Panel -->
+    <aside class="composer-panel">
+      <div class="panel-header">
+        <h2 class="panel-title">
+          <i data-lucide="send" style="color: var(--primary);"></i>
+          Share Item
+        </h2>
+        <span class="item-count-pill" id="targetPeerCount">Cloud DB Synced</span>
+      </div>
+
+      <!-- Composer Tabs -->
+      <div class="type-tabs">
+        <button class="tab-btn active" data-tab="text">
+          <i data-lucide="file-text" style="width: 16px;"></i> Text
+        </button>
+        <button class="tab-btn" data-tab="photo">
+          <i data-lucide="image" style="width: 16px;"></i> Photo
+        </button>
+        <button class="tab-btn" data-tab="file">
+          <i data-lucide="paperclip" style="width: 16px;"></i> File
+        </button>
+      </div>
+
+      <!-- Tab Content: Text -->
+      <div class="tab-content active" id="tab-text">
+        <textarea 
+          class="input-textarea" 
+          id="textInput" 
+          placeholder="Paste text, URLs, phone numbers, or code snippets to send to your phone/laptop instantly..."
+        ></textarea>
+        <button class="btn-primary" id="sendTextBtn">
+          <i data-lucide="send"></i> Send Text
+        </button>
+      </div>
+
+      <!-- Tab Content: Photo -->
+      <div class="tab-content" id="tab-photo">
+        <div class="dropzone" id="photoDropzone">
+          <div class="dropzone-icon">
+            <i data-lucide="camera"></i>
+          </div>
+          <p>Drag & Drop photo or <strong>Click to select</strong></p>
+          <input type="file" id="photoFileInput" accept="image/*" style="display: none;">
+        </div>
+        
+        <div class="file-preview-bar" id="photoPreviewBar" style="display: none;">
+          <div class="file-info">
+            <i data-lucide="image" style="color: var(--primary);"></i>
+            <span id="photoFileName">photo.png</span>
+          </div>
+          <button class="btn-icon" id="clearPhotoBtn" style="width: 28px; height: 28px;">
+            <i data-lucide="x" style="width: 14px;"></i>
+          </button>
+        </div>
+
+        <button class="btn-primary" id="sendPhotoBtn" disabled>
+          <i data-lucide="upload-cloud"></i> Send Photo
+        </button>
+      </div>
+
+      <!-- Tab Content: File -->
+      <div class="tab-content" id="tab-file">
+        <div class="dropzone" id="fileDropzone">
+          <div class="dropzone-icon">
+            <i data-lucide="folder-up"></i>
+          </div>
+          <p>Drag & Drop any file or <strong>Click to select</strong></p>
+          <input type="file" id="generalFileInput" style="display: none;">
+        </div>
+
+        <div class="file-preview-bar" id="filePreviewBar" style="display: none;">
+          <div class="file-info">
+            <i data-lucide="file" style="color: var(--accent);"></i>
+            <span id="generalFileName">document.pdf</span>
+          </div>
+          <button class="btn-icon" id="clearFileBtn" style="width: 28px; height: 28px;">
+            <i data-lucide="x" style="width: 14px;"></i>
+          </button>
+        </div>
+
+        <button class="btn-primary" id="sendFileBtn" disabled>
+          <i data-lucide="upload-cloud"></i> Send File
+        </button>
+      </div>
+
+      <!-- Expiry Selector Option -->
+      <div style="font-size: 0.82rem; color: var(--text-muted); display: flex; align-items: center; justify-content: space-between; padding-top: 10px; border-top: 1px solid var(--border-color);">
+        <span>Auto-Delete After:</span>
+        <select id="itemExpirySelect" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-main); padding: 4px 8px; border-radius: 6px; font-size: 0.8rem;">
+          <option value="15">15 Minutes</option>
+          <option value="60" selected>1 Hour</option>
+          <option value="1440">24 Hours</option>
+          <option value="0">Never (Manual Delete)</option>
+        </select>
+      </div>
+    </aside>
+
+    <!-- Right Items Feed Panel -->
+    <section class="feed-panel">
+      
+      <!-- Feed Header -->
+      <div class="feed-header">
+        <div class="feed-title">
+          <span>Synced Items Vault</span>
+          <span class="item-count-pill" id="totalItemCount">0 Items</span>
+        </div>
+
+        <div class="feed-actions">
+          <div class="search-box">
+            <i data-lucide="search" class="search-icon" style="width: 16px;"></i>
+            <input type="text" class="search-input" id="searchFeedInput" placeholder="Search items...">
+          </div>
+
+          <button class="btn-danger-outline" id="clearAllBtn">
+            <i data-lucide="trash-2" style="width: 16px;"></i> Clear All
+          </button>
+        </div>
+      </div>
+
+      <!-- Cards Grid -->
+      <div class="feed-grid" id="feedGrid">
+        <!-- Dynamic Cards rendered by JavaScript -->
+      </div>
+
+      <!-- Empty State Graphic -->
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">
+          <i data-lucide="hard-drive-download"></i>
+        </div>
+        <h3>Your Vault is Empty</h3>
+        <p>Send text, photos, or files from your Laptop or Smartphone to see them appear here instantly!</p>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- Pair / Room QR Modal -->
+  <div class="modal-overlay" id="roomModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Connect Smartphone / Laptop</h3>
+        <button class="btn-icon" id="closeRoomModalBtn">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+
+      <p style="font-size: 0.9rem; color: var(--text-muted);">
+        Scan this QR Code with your mobile camera or enter the Room Code on another device to join the same temporary DB room.
+      </p>
+
+      <!-- QR Box -->
+      <div class="qr-box">
+        <div id="qrcodeCanvas"></div>
+      </div>
+
+      <!-- Room PIN Info -->
+      <div style="text-align: center;">
+        <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Room PIN Code</div>
+        <div style="font-size: 1.8rem; font-weight: 800; color: var(--primary); font-family: monospace;" id="modalRoomPin">----</div>
+      </div>
+
+      <!-- Join another Room manually -->
+      <div style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border-color); padding-top: 14px;">
+        <label style="font-size: 0.82rem; font-weight: 600;">Join a Specific Room PIN:</label>
+        <div class="room-input-group">
+          <input type="text" class="input-text" id="joinRoomPinInput" placeholder="Enter 4-digit code (e.g. 1089)">
+          <button class="btn-primary" id="joinRoomSubmitBtn" style="width: auto; padding: 0 16px;">
+            Join
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings / Expiry Modal -->
+  <div class="modal-overlay" id="settingsModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Temporary DB & Sync Status</h3>
+        <button class="btn-icon" id="closeSettingsModalBtn">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 14px; font-size: 0.9rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span>Active Device ID:</span>
+          <span style="font-family: monospace; font-weight: 700; color: var(--accent);" id="selfPeerId">Detecting...</span>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span>Cloud Temporary DB:</span>
+          <span style="color: var(--accent); font-weight: 600;" id="cloudDbStatus">Active Realtime DB</span>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span>Total Temporary Storage:</span>
+          <span style="font-weight: 700;" id="storageSizeDisplay">0 KB</span>
+        </div>
+      </div>
+
+      <button class="btn-primary" id="saveSettingsBtn">
+        Done
+      </button>
+    </div>
+  </div>
+
+  <!-- Image Lightbox Modal -->
+  <div class="lightbox-modal" id="lightboxModal">
+    <button class="lightbox-close" id="closeLightboxBtn">
+      <i data-lucide="x"></i>
+    </button>
+    <img src="" alt="Full view" class="lightbox-img" id="lightboxImage">
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- App Script -->
+  <script src="app.js"></script>
+  <script>
+    // Initialize Lucide Icons
+    lucide.createIcons();
+  </script>
+</body>
+</html>

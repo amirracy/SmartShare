@@ -1,7 +1,7 @@
 /**
  * SmartShare Hub - Core Application Logic
  * Triple-Engine Real-Time Sync: PubSub SSE + Active Cloud Polling (2.5s) + PeerJS WebRTC Auto-Mesh.
- * 100% Guaranteed Cross-Device Sync on 4G/5G, Wi-Fi, Smartphones, and Laptops.
+ * Includes Mobile Touch Modal Popup Fixes & Cross-Device Sync.
  */
 
 (function () {
@@ -120,12 +120,10 @@
 
     let pin = null;
 
-    // Check #room=3270 or #3270
     const hashMatch = hash.match(/room=([A-Za-z0-9]+)/) || hash.match(/#([A-Za-z0-9]{3,8})/);
     if (hashMatch && hashMatch[1]) {
       pin = hashMatch[1];
     } else {
-      // Check ?room=3270 or ?pin=3270
       const searchMatch = search.match(/[?&](?:room|pin)=([A-Za-z0-9]+)/);
       if (searchMatch && searchMatch[1]) {
         pin = searchMatch[1];
@@ -139,8 +137,8 @@
     }
 
     window.location.hash = `room=${currentRoomCode}`;
-    roomCodeDisplay.textContent = `ROOM #${currentRoomCode}`;
-    modalRoomPin.textContent = currentRoomCode;
+    if (roomCodeDisplay) roomCodeDisplay.textContent = `ROOM #${currentRoomCode}`;
+    if (modalRoomPin) modalRoomPin.textContent = currentRoomCode;
     generateQRCode();
   }
 
@@ -151,14 +149,18 @@
 
     const shareUrl = `${window.location.origin}${window.location.pathname}#room=${currentRoomCode}`;
     
-    qrcodeObj = new QRCode(qrContainer, {
-      text: shareUrl,
-      width: 180,
-      height: 180,
-      colorDark: "#0f172a",
-      colorLight: "#ffffff",
-      correctLevel: QRCode.CorrectLevel.H
-    });
+    try {
+      qrcodeObj = new QRCode(qrContainer, {
+        text: shareUrl,
+        width: 170,
+        height: 170,
+        colorDark: "#0f172a",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.H
+      });
+    } catch (err) {
+      console.warn('QR Code generation error:', err);
+    }
   }
 
   function joinRoom(pin) {
@@ -168,8 +170,8 @@
 
     currentRoomCode = cleanPin;
     window.location.hash = `room=${cleanPin}`;
-    roomCodeDisplay.textContent = `ROOM #${cleanPin}`;
-    modalRoomPin.textContent = cleanPin;
+    if (roomCodeDisplay) roomCodeDisplay.textContent = `ROOM #${cleanPin}`;
+    if (modalRoomPin) modalRoomPin.textContent = cleanPin;
     generateQRCode();
 
     itemsVault = [];
@@ -183,15 +185,13 @@
     showToast(`Joined Room #${cleanPin}`, 'success');
   }
 
-  // --- Triple-Engine Cross-Device Real-Time Synchronization ---
+  // --- Triple-Engine Synchronization ---
   function initCloudRealtimeEngine() {
-    // 1. Close previous EventSource SSE
     if (eventSource) {
       eventSource.close();
       eventSource = null;
     }
 
-    // 2. Clear previous active polling
     if (pollTimer) {
       clearInterval(pollTimer);
       pollTimer = null;
@@ -202,7 +202,6 @@
 
     if (cloudDbStatus) cloudDbStatus.textContent = 'Active (Live Cloud Sync)';
 
-    // Connect SSE Stream
     try {
       eventSource = new EventSource(sseUrl);
 
@@ -220,7 +219,6 @@
       console.warn('EventSource fallback:', e);
     }
 
-    // Connect Active 2.5s Polling Fallback (Guarantees cross-device sync on all networks)
     fetchCloudHistory();
     pollTimer = setInterval(fetchCloudHistory, 2500);
   }
@@ -247,7 +245,6 @@
   function handleCloudMessage(raw) {
     if (!raw) return;
 
-    // Handle attachment upload (Photos & Files)
     if (raw.title === 'SMARTSHARE_ATTACHMENT' && raw.message && raw.attachment) {
       try {
         const meta = JSON.parse(raw.message);
@@ -269,7 +266,6 @@
       return;
     }
 
-    // Handle JSON message (Text & P2P actions)
     if (raw.message) {
       try {
         const payload = JSON.parse(raw.message);
@@ -320,7 +316,6 @@
       renderFeed();
       showToast(`Received new ${item.category || 'item'}!`, 'info');
     } else {
-      // Upgrade existing item if new full content URL arrives
       if (item.content && itemsVault[index].content !== item.content) {
         itemsVault[index] = item;
         saveVaultLocal();
@@ -497,7 +492,6 @@
 
   function updateSyncStatus() {
     if (targetPeerCount) {
-      const activeCount = activeConnections.length + 1;
       targetPeerCount.textContent = `Cloud Synced`;
     }
   }
@@ -588,31 +582,58 @@
     storageSizeDisplay.textContent = kb > 1024 ? `${(kb / 1024).toFixed(2)} MB` : `${kb} KB`;
   }
 
-  // --- UI Event Handlers ---
+  // --- UI Event Handlers (With Mobile Touch Compatibility) ---
   function setupEventListeners() {
-    themeToggleBtn.addEventListener('click', toggleTheme);
+    if (themeToggleBtn) themeToggleBtn.addEventListener('click', toggleTheme);
 
-    openRoomBtn.addEventListener('click', () => openModal(roomModal));
+    // QR Code Room Modal Triggers (Native click + touch listener)
+    if (openRoomBtn) {
+      const handleOpenRoomModal = (e) => {
+        if (e) e.preventDefault();
+        generateQRCode();
+        openModal(roomModal);
+      };
+      openRoomBtn.addEventListener('click', handleOpenRoomModal);
+    }
+
     if (quickJoinBtn) {
-      quickJoinBtn.addEventListener('click', () => {
+      quickJoinBtn.addEventListener('click', (e) => {
+        if (e) e.preventDefault();
         const pinPrompt = prompt("Enter Room PIN to Join (e.g. 3270):");
         if (pinPrompt) joinRoom(pinPrompt);
       });
     }
 
-    closeRoomModalBtn.addEventListener('click', () => closeModal(roomModal));
-    roomModal.addEventListener('click', (e) => { if (e.target === roomModal) closeModal(roomModal); });
+    if (closeRoomModalBtn) {
+      closeRoomModalBtn.addEventListener('click', () => closeModal(roomModal));
+    }
+    
+    if (roomModal) {
+      roomModal.addEventListener('click', (e) => { 
+        if (e.target === roomModal) closeModal(roomModal); 
+      });
+    }
 
-    openSettingsBtn.addEventListener('click', () => {
-      updateStorageSizeDisplay();
-      openModal(settingsModal);
-    });
-    closeSettingsModalBtn.addEventListener('click', () => closeModal(settingsModal));
-    saveSettingsBtn.addEventListener('click', () => closeModal(settingsModal));
-    settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) closeModal(settingsModal); });
+    if (openSettingsBtn) {
+      openSettingsBtn.addEventListener('click', () => {
+        updateStorageSizeDisplay();
+        openModal(settingsModal);
+      });
+    }
+    if (closeSettingsModalBtn) closeSettingsModalBtn.addEventListener('click', () => closeModal(settingsModal));
+    if (saveSettingsBtn) saveSettingsBtn.addEventListener('click', () => closeModal(settingsModal));
+    if (settingsModal) {
+      settingsModal.addEventListener('click', (e) => { 
+        if (e.target === settingsModal) closeModal(settingsModal); 
+      });
+    }
 
-    joinRoomSubmitBtn.addEventListener('click', () => joinRoom(joinRoomPinInput.value));
-    joinRoomPinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') joinRoom(joinRoomPinInput.value); });
+    if (joinRoomSubmitBtn) joinRoomSubmitBtn.addEventListener('click', () => joinRoom(joinRoomPinInput.value));
+    if (joinRoomPinInput) {
+      joinRoomPinInput.addEventListener('keydown', (e) => { 
+        if (e.key === 'Enter') joinRoom(joinRoomPinInput.value); 
+      });
+    }
 
     tabBtns.forEach(btn => {
       btn.addEventListener('click', () => {
@@ -624,26 +645,32 @@
       });
     });
 
-    sendTextBtn.addEventListener('click', handleSendText);
-    textInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-        handleSendText();
-      }
-    });
+    if (sendTextBtn) sendTextBtn.addEventListener('click', handleSendText);
+    if (textInput) {
+      textInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          handleSendText();
+        }
+      });
+    }
 
-    photoFileInput.addEventListener('change', handlePhotoSelect);
-    clearPhotoBtn.addEventListener('click', clearPhotoSelection);
-    sendPhotoBtn.addEventListener('click', handleSendPhoto);
+    if (photoFileInput) photoFileInput.addEventListener('change', handlePhotoSelect);
+    if (clearPhotoBtn) clearPhotoBtn.addEventListener('click', clearPhotoSelection);
+    if (sendPhotoBtn) sendPhotoBtn.addEventListener('click', handleSendPhoto);
 
-    generalFileInput.addEventListener('change', handleFileSelect);
-    clearFileBtn.addEventListener('click', clearFileSelection);
-    sendFileBtn.addEventListener('click', handleSendFile);
+    if (generalFileInput) generalFileInput.addEventListener('change', handleFileSelect);
+    if (clearFileBtn) clearFileBtn.addEventListener('click', clearFileSelection);
+    if (sendFileBtn) sendFileBtn.addEventListener('click', handleSendFile);
 
-    searchFeedInput.addEventListener('input', renderFeed);
-    clearAllBtn.addEventListener('click', handleClearAll);
+    if (searchFeedInput) searchFeedInput.addEventListener('input', renderFeed);
+    if (clearAllBtn) clearAllBtn.addEventListener('click', handleClearAll);
 
-    closeLightboxBtn.addEventListener('click', () => closeModal(lightboxModal));
-    lightboxModal.addEventListener('click', (e) => { if (e.target === lightboxModal) closeModal(lightboxModal); });
+    if (closeLightboxBtn) closeLightboxBtn.addEventListener('click', () => closeModal(lightboxModal));
+    if (lightboxModal) {
+      lightboxModal.addEventListener('click', (e) => { 
+        if (e.target === lightboxModal) closeModal(lightboxModal); 
+      });
+    }
 
     window.addEventListener('hashchange', () => {
       const match = window.location.hash.match(/room=([A-Za-z0-9]+)/);
@@ -659,6 +686,7 @@
   }
 
   function setupSingleDropzone(element, inputEl, handleFn) {
+    if (!element || !inputEl) return;
     element.addEventListener('click', () => inputEl.click());
     
     ['dragenter', 'dragover'].forEach(eventName => {
@@ -860,21 +888,21 @@
       });
     }
 
-    totalItemCount.textContent = `${filtered.length} Item${filtered.length !== 1 ? 's' : ''}`;
+    if (totalItemCount) totalItemCount.textContent = `${filtered.length} Item${filtered.length !== 1 ? 's' : ''}`;
 
     if (filtered.length === 0) {
-      feedGrid.style.display = 'none';
-      emptyState.style.display = 'flex';
+      if (feedGrid) feedGrid.style.display = 'none';
+      if (emptyState) emptyState.style.display = 'flex';
       return;
     }
 
-    feedGrid.style.display = 'grid';
-    emptyState.style.display = 'none';
-    feedGrid.innerHTML = '';
+    if (feedGrid) feedGrid.style.display = 'grid';
+    if (emptyState) emptyState.style.display = 'none';
+    if (feedGrid) feedGrid.innerHTML = '';
 
     filtered.forEach(item => {
       const card = createCardElement(item);
-      feedGrid.appendChild(card);
+      if (feedGrid) feedGrid.appendChild(card);
     });
 
     if (window.lucide) lucide.createIcons();
@@ -1017,7 +1045,16 @@
     }
   };
 
-  // --- Global Helpers ---
+  // --- Modal Control Functions ---
+  function openModal(el) {
+    if (el) el.classList.add('active');
+  }
+
+  function closeModal(el) {
+    if (el) el.classList.remove('active');
+  }
+
+  // --- Global Action Helpers ---
   window.copyTextToClipboard = function (text) {
     if (navigator.clipboard && window.isSecureContext) {
       navigator.clipboard.writeText(text).then(() => {
@@ -1060,14 +1097,6 @@
     lightboxImage.src = imgSrc;
     openModal(lightboxModal);
   };
-
-  function openModal(el) {
-    if (el) el.classList.add('active');
-  }
-
-  function closeModal(el) {
-    if (el) el.classList.remove('active');
-  }
 
   function showToast(msg, type = 'info') {
     const toast = document.createElement('div');

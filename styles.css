@@ -1,9 +1,9 @@
-/* SmartShare Hub - Modern Glassmorphism & Responsive Design System */
+/* SmartShare Hub - Modern Glassmorphism & Mobile Touch Design System */
 :root {
   --bg-primary: #0a0d14;
   --bg-secondary: #121824;
-  --bg-card: rgba(22, 30, 46, 0.75);
-  --bg-card-hover: rgba(30, 41, 62, 0.9);
+  --bg-card: rgba(22, 30, 46, 0.8);
+  --bg-card-hover: rgba(30, 41, 62, 0.95);
   --bg-glass: rgba(255, 255, 255, 0.04);
   --border-color: rgba(255, 255, 255, 0.1);
   --border-highlight: rgba(99, 102, 241, 0.5);
@@ -34,7 +34,7 @@
 [data-theme="light"] {
   --bg-primary: #f8fafc;
   --bg-secondary: #ffffff;
-  --bg-card: rgba(255, 255, 255, 0.9);
+  --bg-card: rgba(255, 255, 255, 0.92);
   --bg-card-hover: rgba(241, 245, 249, 0.98);
   --bg-glass: rgba(0, 0, 0, 0.03);
   --border-color: rgba(0, 0, 0, 0.1);
@@ -139,7 +139,8 @@ body {
   gap: 8px;
 }
 
-.room-badge {
+/* Button style for Room Badge */
+button.room-badge {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -150,11 +151,16 @@ body {
   cursor: pointer;
   transition: var(--transition);
   user-select: none;
+  color: var(--text-main);
+  font-family: inherit;
+  min-height: 38px;
+  outline: none;
 }
 
-.room-badge:hover {
+button.room-badge:hover, button.room-badge:active {
   border-color: var(--border-highlight);
   box-shadow: var(--shadow-glow);
+  background: var(--bg-card-hover);
 }
 
 .status-dot {
@@ -196,7 +202,7 @@ body {
   flex-shrink: 0;
 }
 
-.btn-icon:hover {
+.btn-icon:hover, .btn-icon:active {
   background: var(--bg-card-hover);
   border-color: var(--border-highlight);
   color: var(--primary);
@@ -298,7 +304,7 @@ body {
   padding: 12px;
   color: var(--text-main);
   font-family: var(--font-family);
-  font-size: 16px; /* Prevents auto-zoom on mobile safari */
+  font-size: 16px;
   resize: vertical;
   outline: none;
   transition: var(--transition);
@@ -393,7 +399,7 @@ body {
   box-shadow: 0 4px 15px var(--primary-glow);
 }
 
-.btn-primary:hover {
+.btn-primary:hover, .btn-primary:active {
   transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
 }
@@ -697,20 +703,22 @@ body {
   max-width: 300px;
 }
 
-/* Modal Overlay */
+/* Modal Overlay (z-index 9999 for mobile popups) */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.78);
-  backdrop-filter: blur(8px);
-  z-index: 200;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.25s ease;
+  overflow-y: auto;
 }
 
 .modal-overlay.active {
@@ -728,9 +736,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+  box-shadow: 0 25px 50px rgba(0,0,0,0.6);
   transform: translateY(15px);
-  transition: transform 0.2s ease;
+  transition: transform 0.25s ease;
 }
 
 .modal-overlay.active .modal-card {
@@ -784,7 +792,7 @@ body {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  z-index: 300;
+  z-index: 10000;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -816,8 +824,8 @@ body {
 .lightbox-modal {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.92);
-  z-index: 400;
+  background: rgba(0, 0, 0, 0.94);
+  z-index: 10001;
   display: flex;
   align-items: center;
   justify-content: center;

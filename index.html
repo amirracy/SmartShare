@@ -37,7 +37,13 @@
       </a>
 
       <div class="header-actions">
-        <!-- Room Status Badge & Pair Button (Button for 100% mobile touch compatibility) -->
+        <!-- User Display Name Pill -->
+        <button class="user-profile-badge" id="openProfileBtn" type="button" title="Click to edit your display name">
+          <i data-lucide="user" style="width: 14px;"></i>
+          <span id="headerUserName">Set Name</span>
+        </button>
+
+        <!-- Room Status Badge & Pair Button -->
         <button class="room-badge" id="openRoomBtn" type="button" title="Click to view Room QR Code & PIN">
           <span class="status-dot"></span>
           <span class="room-code-display" id="roomCodeDisplay">ROOM #----</span>
@@ -184,7 +190,7 @@
         </div>
       </div>
 
-      <!-- Cards Grid -->
+      <!-- Cards Grid (Sorted Descending: Latest at Top) -->
       <div class="feed-grid" id="feedGrid">
         <!-- Dynamic Cards rendered by JavaScript -->
       </div>
@@ -200,6 +206,28 @@
 
     </section>
   </main>
+
+  <!-- User Name Modal (Pop-up on Join) -->
+  <div class="modal-overlay" id="userNameModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Welcome to SmartShare Hub</h3>
+      </div>
+
+      <p style="font-size: 0.9rem; color: var(--text-muted);">
+        Please enter your Display Name (e.g. <strong>Amir's iPhone</strong> or <strong>Laptop</strong>) so connected devices know who is sharing content.
+      </p>
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <label style="font-size: 0.85rem; font-weight: 600;">Your Name / Device Name:</label>
+        <input type="text" class="input-text" id="userNameInput" placeholder="e.g. Amir's Laptop" style="font-size: 1rem; padding: 10px 14px;">
+      </div>
+
+      <button class="btn-primary" id="saveUserNameBtn" type="button">
+        Start Sharing
+      </button>
+    </div>
+  </div>
 
   <!-- Pair / Room QR Modal -->
   <div class="modal-overlay" id="roomModal">
@@ -226,8 +254,16 @@
         <div style="font-size: 1.8rem; font-weight: 800; color: var(--primary); font-family: monospace;" id="modalRoomPin">----</div>
       </div>
 
+      <!-- Connected Users List -->
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <label style="font-size: 0.85rem; font-weight: 600;">Connected Users in Room:</label>
+        <div class="user-list" id="connectedUsersList">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+
       <!-- Join another Room manually -->
-      <div style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border-color); padding-top: 14px;">
+      <div style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border-color); padding-top: 12px;">
         <label style="font-size: 0.85rem; font-weight: 600;">Join a Specific Room PIN:</label>
         <div class="room-input-group">
           <input type="text" class="input-text" id="joinRoomPinInput" placeholder="Enter 4-digit PIN (e.g. 3270)">
@@ -236,6 +272,14 @@
           </button>
         </div>
       </div>
+
+      <!-- Reset Room Button -->
+      <div style="border-top: 1px solid var(--border-color); padding-top: 12px;">
+        <button class="btn-warning-outline" id="resetRoomBtn" type="button" style="width: 100%; justify-content: center;">
+          <i data-lucide="rotate-ccw" style="width: 16px;"></i> Reset Room (Close & Generate New PIN)
+        </button>
+      </div>
+
     </div>
   </div>
 
@@ -250,6 +294,11 @@
       </div>
 
       <div style="display: flex; flex-direction: column; gap: 14px; font-size: 0.9rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span>Your Display Name:</span>
+          <span style="font-weight: 700; color: var(--primary);" id="settingsUserName">Device User</span>
+        </div>
+
         <div style="display: flex; align-items: center; justify-content: space-between;">
           <span>Active Device ID:</span>
           <span style="font-family: monospace; font-weight: 700; color: var(--accent);" id="selfPeerId">Detecting...</span>

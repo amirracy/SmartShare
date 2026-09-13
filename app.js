@@ -1,23 +1,27 @@
 /**
  * SmartShare Hub - Core Application Logic
- * Triple-Engine Real-Time Sync: PubSub SSE + Active Cloud Polling (2.5s) + PeerJS WebRTC Auto-Mesh.
- * Includes Mobile Touch Modal Popup Fixes & Cross-Device Sync.
+ * Features: Descending Order Feed (Latest at Top), User Display Name Popup & Active User Presence,
+ * Reset Room (Generates new PIN & closes old room), Triple-Engine Real-Time Sync (PubSub SSE, 2.5s Polling, WebRTC Mesh).
  */
 
 (function () {
   'use strict';
 
-  // --- App Constants ---
+  // --- App Constants & State ---
   const STORAGE_KEY = 'smartshare_vault_items';
   const THEME_KEY = 'smartshare_theme';
+  const USERNAME_KEY = 'smartshare_username';
   
   let currentRoomCode = '';
+  let currentUserName = '';
   let itemsVault = [];
+  let connectedUsers = {}; // id -> { id, name, lastSeen }
   let peer = null;
   let activeConnections = [];
   let isRoomMaster = false;
   let eventSource = null;
   let pollTimer = null;
+  let presenceTimer = null;
   let broadcastChannel = null;
   let qrcodeObj = null;
 
@@ -35,11 +39,20 @@
   const closeRoomModalBtn = document.getElementById('closeRoomModalBtn');
   const joinRoomPinInput = document.getElementById('joinRoomPinInput');
   const joinRoomSubmitBtn = document.getElementById('joinRoomSubmitBtn');
+  const resetRoomBtn = document.getElementById('resetRoomBtn');
+
+  const openProfileBtn = document.getElementById('openProfileBtn');
+  const headerUserName = document.getElementById('headerUserName');
+  const userNameModal = document.getElementById('userNameModal');
+  const userNameInput = document.getElementById('userNameInput');
+  const saveUserNameBtn = document.getElementById('saveUserNameBtn');
+  const connectedUsersList = document.getElementById('connectedUsersList');
 
   const openSettingsBtn = document.getElementById('openSettingsBtn');
   const settingsModal = document.getElementById('settingsModal');
   const closeSettingsModalBtn = document.getElementById('closeSettingsModalBtn');
   const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+  const settingsUserName = document.getElementById('settingsUserName');
   const selfPeerId = document.getElementById('selfPeerId');
   const storageSizeDisplay = document.getElementById('storageSizeDisplay');
   const cloudDbStatus = document.getElementById('cloudDbStatus');
@@ -80,6 +93,7 @@
   // --- Initialization ---
   function init() {
     loadTheme();
+    loadUserName();
     loadRoomCode();
     loadVaultLocal();
     initBroadcastChannel();
@@ -87,6 +101,7 @@
     initPeerJSMesh();
     setupEventListeners();
     setupDropzones();
+    startPresenceLoop();
     startExpiryChecker();
     renderFeed();
   }
@@ -111,6 +126,33 @@
       themeIcon.setAttribute('data-lucide', theme === 'dark' ? 'sun' : 'moon');
       if (window.lucide) lucide.createIcons();
     }
+  }
+
+  // --- User Display Name Management ---
+  function loadUserName() {
+    let savedName = localStorage.getItem(USERNAME_KEY);
+    if (!savedName || savedName.trim() === '') {
+      savedName = 'Device User';
+      promptUserNameModal();
+    }
+    setUserName(savedName);
+  }
+
+  function promptUserNameModal() {
+    if (userNameInput) userNameInput.value = currentUserName === 'Device User' ? '' : currentUserName;
+    openModal(userNameModal);
+  }
+
+  function setUserName(name) {
+    currentUserName = name.trim() || 'Device User';
+    localStorage.setItem(USERNAME_KEY, currentUserName);
+    if (headerUserName) headerUserName.textContent = currentUserName;
+    if (settingsUserName) settingsUserName.textContent = currentUserName;
+    
+    // Register self in presence
+    const myId = peer ? peer.id : 'self';
+    connectedUsers[myId] = { id: myId, name: currentUserName, lastSeen: Date.now() };
+    renderConnectedUsers();
   }
 
   // --- Room Code & Hash Parser ---
@@ -175,6 +217,7 @@
     generateQRCode();
 
     itemsVault = [];
+    connectedUsers = {};
     loadVaultLocal();
     renderFeed();
 
@@ -185,7 +228,22 @@
     showToast(`Joined Room #${cleanPin}`, 'success');
   }
 
-  // --- Triple-Engine Synchronization ---
+  function handleResetRoom() {
+    if (!confirm('Are you sure you want to reset this room? All devices will leave this room and a new Room PIN will be generated.')) {
+      return;
+    }
+
+    // Broadcast reset signal to all connected peers & cloud
+    publishToCloudRelay({ action: 'RESET_ROOM' });
+    broadcastP2P({ type: 'RESET_ROOM' });
+
+    // Generate brand new room code
+    const newPin = Math.floor(1000 + Math.random() * 9000).toString();
+    showToast('Room Reset! Generated new PIN: #' + newPin, 'warning');
+    joinRoom(newPin);
+  }
+
+  // --- Real-Time Engine: PubSub & Active Polling ---
   function initCloudRealtimeEngine() {
     if (eventSource) {
       eventSource.close();
@@ -251,6 +309,7 @@
         const item = {
           id: meta.id,
           category: meta.category,
+          senderName: meta.senderName || 'Device User',
           name: meta.name || raw.attachment.name,
           size: meta.size || formatBytes(raw.attachment.size),
           mime: meta.mime || raw.attachment.type,
@@ -287,6 +346,13 @@
       itemsVault = [];
       saveVaultLocal();
       renderFeed();
+    } else if (payload.action === 'RESET_ROOM') {
+      showToast('Host reset this room. Generating new Room PIN...', 'warning');
+      const newPin = Math.floor(1000 + Math.random() * 9000).toString();
+      joinRoom(newPin);
+    } else if (payload.action === 'PRESENCE_PING' && payload.user) {
+      connectedUsers[payload.user.id] = { ...payload.user, lastSeen: Date.now() };
+      renderConnectedUsers();
     } else if (payload.action === 'REQUEST_SYNC' && isRoomMaster) {
       publishToCloudRelay({ action: 'RESPONSE_SYNC', vault: itemsVault });
     } else if (payload.action === 'RESPONSE_SYNC' && Array.isArray(payload.vault)) {
@@ -298,7 +364,7 @@
         }
       });
       if (changed) {
-        itemsVault.sort((a, b) => b.timestamp - a.timestamp);
+        sortVaultDescending();
         cleanExpiredItems();
         saveVaultLocal();
         renderFeed();
@@ -306,18 +372,25 @@
     }
   }
 
+  // --- Sort Vault Descending (Latest Uploaded at Top) ---
+  function sortVaultDescending() {
+    itemsVault.sort((a, b) => b.timestamp - a.timestamp);
+  }
+
   function addItemToVault(item) {
     if (!item || !item.id) return;
     const index = itemsVault.findIndex(i => i.id === item.id);
     if (index === -1) {
-      itemsVault.unshift(item);
+      itemsVault.unshift(item); // Insert at top
+      sortVaultDescending();    // Ensure strict descending timestamp order
       cleanExpiredItems();
       saveVaultLocal();
       renderFeed();
-      showToast(`Received new ${item.category || 'item'}!`, 'info');
+      showToast(`New ${item.category || 'item'} from ${item.senderName || 'Device'}!`, 'info');
     } else {
       if (item.content && itemsVault[index].content !== item.content) {
         itemsVault[index] = item;
+        sortVaultDescending();
         saveVaultLocal();
         renderFeed();
       }
@@ -344,6 +417,7 @@
     const metadataHeader = JSON.stringify({
       id: item.id,
       category: item.category,
+      senderName: item.senderName || currentUserName,
       name: item.name,
       size: item.size,
       mime: item.mime,
@@ -369,6 +443,65 @@
       .catch(err => console.warn('Attachment upload fallback:', err));
   }
 
+  // --- Connected Users Presence Loop ---
+  function startPresenceLoop() {
+    if (presenceTimer) clearInterval(presenceTimer);
+    
+    // Broadcast own presence every 4 seconds
+    sendPresencePing();
+    presenceTimer = setInterval(sendPresencePing, 4000);
+  }
+
+  function sendPresencePing() {
+    const myId = peer ? peer.id : `user_${Math.random().toString(36).substring(2,6)}`;
+    const payload = {
+      action: 'PRESENCE_PING',
+      user: {
+        id: myId,
+        name: currentUserName,
+        lastSeen: Date.now()
+      }
+    };
+
+    connectedUsers[myId] = payload.user;
+    publishToCloudRelay(payload);
+    broadcastP2P({ type: 'PRESENCE_PING', user: payload.user });
+    renderConnectedUsers();
+  }
+
+  function renderConnectedUsers() {
+    if (!connectedUsersList) return;
+    const now = Date.now();
+    const activeList = Object.values(connectedUsers).filter(u => (now - u.lastSeen) < 15000);
+
+    connectedUsersList.innerHTML = '';
+
+    if (activeList.length === 0) {
+      connectedUsersList.innerHTML = '<div style="font-size: 0.8rem; color: var(--text-dim);">1 Active Device (You)</div>';
+      return;
+    }
+
+    activeList.forEach(u => {
+      const isSelf = peer && u.id === peer.id;
+      const itemEl = document.createElement('div');
+      itemEl.className = 'user-item';
+      itemEl.innerHTML = `
+        <span class="user-name">
+          <i data-lucide="user-check" style="width: 14px; color: var(--accent);"></i>
+          ${escapeHtml(u.name)} ${isSelf ? '(You)' : ''}
+        </span>
+        <span style="font-size: 0.72rem; color: var(--accent);">Connected</span>
+      `;
+      connectedUsersList.appendChild(itemEl);
+    });
+
+    if (window.lucide) lucide.createIcons();
+
+    if (targetPeerCount) {
+      targetPeerCount.textContent = `${activeList.length} User${activeList.length > 1 ? 's' : ''} Synced`;
+    }
+  }
+
   // --- PeerJS WebRTC Auto-Mesh ---
   function initPeerJSMesh() {
     if (peer) {
@@ -386,12 +519,11 @@
     peer.on('open', (id) => {
       isRoomMaster = true;
       if (selfPeerId) selfPeerId.textContent = `Master: ${id}`;
-      updateSyncStatus();
+      sendPresencePing();
     });
 
     peer.on('connection', (conn) => {
       activeConnections.push(conn);
-      updateSyncStatus();
 
       conn.on('open', () => {
         conn.send({ type: 'SYNC_FULL_VAULT', vault: itemsVault });
@@ -403,7 +535,6 @@
 
       conn.on('close', () => {
         activeConnections = activeConnections.filter(c => c !== conn);
-        updateSyncStatus();
       });
     });
 
@@ -420,12 +551,11 @@
     peer.on('open', (id) => {
       isRoomMaster = false;
       if (selfPeerId) selfPeerId.textContent = `Client: ${id}`;
-      updateSyncStatus();
+      sendPresencePing();
 
       const conn = peer.connect(masterPeerId);
       conn.on('open', () => {
         activeConnections.push(conn);
-        updateSyncStatus();
         conn.send({ type: 'REQUEST_VAULT' });
         publishToCloudRelay({ action: 'REQUEST_SYNC' });
       });
@@ -436,13 +566,11 @@
 
       conn.on('close', () => {
         activeConnections = activeConnections.filter(c => c !== conn);
-        updateSyncStatus();
       });
     });
 
     peer.on('connection', (conn) => {
       activeConnections.push(conn);
-      updateSyncStatus();
 
       conn.on('data', (data) => {
         handleP2PMessage(data);
@@ -462,7 +590,7 @@
         }
       });
       if (updated) {
-        itemsVault.sort((a, b) => b.timestamp - a.timestamp);
+        sortVaultDescending();
         cleanExpiredItems();
         saveVaultLocal();
         renderFeed();
@@ -477,6 +605,13 @@
       itemsVault = [];
       saveVaultLocal();
       renderFeed();
+    } else if (data.type === 'RESET_ROOM') {
+      showToast('Host reset this room. Generating new Room PIN...', 'warning');
+      const newPin = Math.floor(1000 + Math.random() * 9000).toString();
+      joinRoom(newPin);
+    } else if (data.type === 'PRESENCE_PING' && data.user) {
+      connectedUsers[data.user.id] = { ...data.user, lastSeen: Date.now() };
+      renderConnectedUsers();
     } else if (data.type === 'REQUEST_VAULT') {
       broadcastP2P({ type: 'SYNC_FULL_VAULT', vault: itemsVault });
     }
@@ -488,12 +623,6 @@
         conn.send(msgObj);
       }
     });
-  }
-
-  function updateSyncStatus() {
-    if (targetPeerCount) {
-      targetPeerCount.textContent = `Cloud Synced`;
-    }
   }
 
   // --- BroadcastChannel ---
@@ -537,6 +666,7 @@
       const data = localStorage.getItem(`${STORAGE_KEY}_${currentRoomCode}`);
       if (data) {
         itemsVault = JSON.parse(data);
+        sortVaultDescending();
         cleanExpiredItems();
       }
     } catch (e) {
@@ -582,18 +712,40 @@
     storageSizeDisplay.textContent = kb > 1024 ? `${(kb / 1024).toFixed(2)} MB` : `${kb} KB`;
   }
 
-  // --- UI Event Handlers (With Mobile Touch Compatibility) ---
+  // --- UI Event Handlers ---
   function setupEventListeners() {
     if (themeToggleBtn) themeToggleBtn.addEventListener('click', toggleTheme);
 
-    // QR Code Room Modal Triggers (Native click + touch listener)
+    // Profile Name edit button
+    if (openProfileBtn) {
+      openProfileBtn.addEventListener('click', promptUserNameModal);
+    }
+
+    if (saveUserNameBtn) {
+      saveUserNameBtn.addEventListener('click', () => {
+        const val = userNameInput.value.trim();
+        if (!val) {
+          showToast('Please enter your name', 'warning');
+          return;
+        }
+        setUserName(val);
+        closeModal(userNameModal);
+        showToast(`Display Name set to: ${val}`, 'success');
+      });
+    }
+
+    if (resetRoomBtn) {
+      resetRoomBtn.addEventListener('click', handleResetRoom);
+    }
+
+    // QR Code Room Modal Triggers
     if (openRoomBtn) {
-      const handleOpenRoomModal = (e) => {
+      openRoomBtn.addEventListener('click', (e) => {
         if (e) e.preventDefault();
         generateQRCode();
+        renderConnectedUsers();
         openModal(roomModal);
-      };
-      openRoomBtn.addEventListener('click', handleOpenRoomModal);
+      });
     }
 
     if (quickJoinBtn) {
@@ -604,10 +756,7 @@
       });
     }
 
-    if (closeRoomModalBtn) {
-      closeRoomModalBtn.addEventListener('click', () => closeModal(roomModal));
-    }
-    
+    if (closeRoomModalBtn) closeRoomModalBtn.addEventListener('click', () => closeModal(roomModal));
     if (roomModal) {
       roomModal.addEventListener('click', (e) => { 
         if (e.target === roomModal) closeModal(roomModal); 
@@ -730,12 +879,14 @@
     const newItem = {
       id: 'item_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
       category: 'text',
+      senderName: currentUserName,
       content: val,
       timestamp: Date.now(),
       expireMinutes: getSelectedExpiry()
     };
 
     itemsVault.unshift(newItem);
+    sortVaultDescending();
     saveVaultLocal();
     broadcastToAll('ADD_ITEM', newItem);
     renderFeed();
@@ -807,6 +958,7 @@
     const newItem = {
       id: 'photo_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
       category: 'photo',
+      senderName: currentUserName,
       name: selectedPhotoData.name,
       size: selectedPhotoData.size,
       mime: selectedPhotoData.mime,
@@ -816,6 +968,7 @@
     };
 
     itemsVault.unshift(newItem);
+    sortVaultDescending();
     saveVaultLocal();
     broadcastToAll('ADD_ITEM', newItem, selectedPhotoData.blob);
     renderFeed();
@@ -858,6 +1011,7 @@
     const newItem = {
       id: 'file_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
       category: 'file',
+      senderName: currentUserName,
       name: selectedFileData.name,
       size: selectedFileData.size,
       mime: selectedFileData.mime,
@@ -867,6 +1021,7 @@
     };
 
     itemsVault.unshift(newItem);
+    sortVaultDescending();
     saveVaultLocal();
     broadcastToAll('ADD_ITEM', newItem, selectedFileData.blob);
     renderFeed();
@@ -875,8 +1030,10 @@
     showToast('File shared to Phone & Laptop!', 'success');
   }
 
-  // --- Render Feed Grid ---
+  // --- Render Feed Grid (Always Descending Order: Latest at Top) ---
   function renderFeed() {
+    sortVaultDescending();
+
     const query = (searchFeedInput.value || '').toLowerCase().trim();
     let filtered = itemsVault;
 
@@ -884,6 +1041,7 @@
       filtered = itemsVault.filter(item => {
         if (item.category === 'text') return item.content.toLowerCase().includes(query);
         if (item.name) return item.name.toLowerCase().includes(query);
+        if (item.senderName) return item.senderName.toLowerCase().includes(query);
         return false;
       });
     }
@@ -896,7 +1054,7 @@
       return;
     }
 
-    if (feedGrid) feedGrid.style.display = 'grid';
+    if (feedGrid) feedGrid.style.display = 'flex';
     if (emptyState) emptyState.style.display = 'none';
     if (feedGrid) feedGrid.innerHTML = '';
 
@@ -944,12 +1102,20 @@
       `;
     }
 
+    const senderDisplay = item.senderName ? escapeHtml(item.senderName) : 'Device User';
+
     card.innerHTML = `
       <div class="card-top">
         <span class="card-type-tag">
           <i data-lucide="${categoryIcon}" style="width: 14px;"></i>
           ${item.category}
         </span>
+
+        <span class="sender-tag">
+          <i data-lucide="user" style="width: 12px;"></i>
+          ${senderDisplay}
+        </span>
+
         <span class="card-time">${timeAgo}</span>
       </div>
 
@@ -1045,7 +1211,7 @@
     }
   };
 
-  // --- Modal Control Functions ---
+  // --- Modal Controls ---
   function openModal(el) {
     if (el) el.classList.add('active');
   }
